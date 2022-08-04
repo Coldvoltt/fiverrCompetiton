@@ -13,13 +13,20 @@ df<- na.omit(df) # Remove 6 NAs
 # We may just look out for top 10 most correlated responses.
 # Using the Lares Bernardo Larse library, we may achieve this.  
 
-devtools::install_github("laresbernardo/lares")
+# devtools::install_github("laresbernardo/lares")
 library(lares)
 
-corr_cross(train[-c(1,2),], # name of dataset
+corr_cross(df[-c(1,2),], # name of dataset
            max_pvalue = 0.05, # display only significant correlations (at 5% level)
            top = 10 # display top 10 couples of variables (by correlation coefficient)
 )
+
+# We convert label to factor.
+df<- df |> 
+  mutate(label = as.factor(label))
+
+# We also need to convert some features that are boolean [0,1] in nature to factor for
+# the model to better understand the data structure
 
 # We may observe that variables x10 and x20 are highly correlated. 0.85
 # We may observe that variables x4 and x5 are highly correlated. 0.78
@@ -66,6 +73,10 @@ gbmMod<-
   fit(gbmRecipeWf, data = tr[,-2])
 
 gbmPred<- predict(gbmMod, new_data = ts)
-gbmPred<- data.frame(celltype=gbmPred$.pred_class)
+gbmPred<- data.frame(label=gbmPred$.pred_class)
 
-pred5<- cbind(location = ts$location, celltype = gbmPred)
+confusionMatrix(gbmPred$label, ts$label)
+
+
+
+F1score<- 2*((.99*.54)/(.99+.54))
