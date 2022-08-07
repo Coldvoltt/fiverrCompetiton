@@ -9,6 +9,18 @@ read_csv('test.csv') -> test
 sum(is.na(df)) # Check for NA
 df<- na.omit(df) # Remove 6 NAs
 
+# The next line of code asks R to check if 
+# each vector or column in DF is <= 6. we store 
+# The result of the check is stored in abc.
+
+abc <-sapply(df, n_distinct) <= 6
+
+# We then ask R to convert every column which
+# has distinct values <= 6 as factor.
+
+df<- df |> 
+  mutate_if(abc,as.factor)
+
 # Because of numerous features, we may not plot correlation matrix..
 # We may just look out for top 10 most correlated responses.
 # Using the Lares Bernardo Larse library, we may achieve this.  
