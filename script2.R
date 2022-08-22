@@ -43,14 +43,6 @@ tr <- df[samp,]
 ts <- df[-samp,]
 
 
-# ----------------------------------
-# The model
-rf<- rand_forest(trees = 100) |> 
-  set_engine("ranger", num.threads = 3, seed = 123) |> 
-  set_mode("classification")
-
-
-
 #-----------------------------------
 
 #Creating a recipe with pre-processing
@@ -61,37 +53,60 @@ trRecipe <- recipe(label~., data = tr) |>
   step_normalize(all_numeric_predictors()) |>   # Transforms data to have mean 0 and SD 1
   step_smote(label)
 
-# Checking effect of pre-processing on dataset
-trx<- trRecipe |> 
+# juicing pre-processed dataframe
+pTrain<- trRecipe |> 
   prep() |> 
   juice()
 
+pTest<- trRecipe |> 
+  prep() |> 
+  bake(ts)
 
-rf_wf<- workflow() |> 
-  add_model(rf) |> 
-  add_recipe(trRecipe)
+# Creating Data Matrix
+trMatrix<- data.matrix(pTrain[,-33])
+trY<- as.numeric(pTrain$label)-1
+
+tsMatrix<- data.matrix(pTest[,-33])
+tsY<- as.numeric(pTest$label)-1
+
+dTrain<- xgb.DMatrix(data = trMatrix, label = trY)
+dTest<- xgb.DMatrix(data = tsMatrix, label = tsY)
+
+#-----------------------------------
+library(xgboost)
+set.seed(123)
+
+# booster = 'gbtree': Possible to also have linear boosters as your weak learners.
+params_booster <- list(booster = 'gbtree',
+                       eta = 1, gamma = 0,
+                       max.depth = 2,
+                       subsample = 1,
+                       colsample_bytree = 1,
+                       min_child_weight = 1,
+                       objective = "binary:logistic")
+
+bst.cv <- xgb.cv(data = trMatrix, 
+                 label = trY,
+                 params = params_booster,
+                 nrounds = 300, 
+                 nfold = 5,
+                 print_every_n = 20,
+                 verbose = 2)
 
 
-# ----------------------------------
-# modeling the data
-model_rf <- rf_wf |> 
-  fit(data = tr)
+bstSparse <- xgboost(data = trMatrix, label = trY, nrounds = 320, params = params_booster)
 
 
-rfPred<- predict(model_rf, new_data = ts)
-rfPred<- data.frame(label=rfPred$.pred_class)
+test1<- trRecipe |> 
+  prep() |> 
+  bake(test)
 
-confusionMatrix(rfPred$label, ts$label, 
-                mode = "everything")
-
-
-label<- predict(model_rf, new_data = test)
-submit<- data.frame(cbind(user_id = test$user_id, prediction =label))
-write.csv(submit, "AlexanderPaul2.csv")
+testPredictDf<- data.matrix(test1)
 
 
-# -------------------------------------
-library(MLmetrics)
-F1_Score(gbmPred$label,ts$label)
-# -------------------------------------
+pred<- predict(bstSparse, testPredictDf)
+pred<- as.numeric(pred>.5)
+submission<- as.data.frame(cbind(user_id = test$user_id, prediction = pred))
 
+
+write.csv(submission, "paulie.csv")
