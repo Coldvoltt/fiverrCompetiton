@@ -3,6 +3,7 @@ library(catboost)
 library(caret)
 library(tidymodels)
 library(themis)
+library(tidy.outliers)
 
 read_csv('train.csv') -> df
 read_csv('test.csv') -> testdf
@@ -11,6 +12,21 @@ df <- df |>
   mutate(label = as.factor(label)) |> 
   select(-user_id)
 
+# df<- na.omit(df)
+# 
+# outlierFix<- function(x){
+#   qnt <- quantile(x, probs=c(.25, .75))
+#   caps <- quantile(x, probs=c(.05, .95))
+#   H <- 1.5 * IQR(x)
+#   
+#   y<- x
+#   y[x < (qnt[1] - H)]  <- caps[1]
+#   y[x > (qnt[1] + H)]  <- caps[2]
+#   y
+# }
+# 
+# df[c(2:52)]<- 
+#   sapply(df[c(2:52)], outlierFix)
 
 # Partitioning data for local training and testing
 set.seed(45)
@@ -19,7 +35,7 @@ tr <- df[samp,]
 ts <- df[-samp,]
 
 #Creating a recipe with pre-processing
-trRecipe <- recipe(label~., data = tr) |>  
+trRecipe <- recipe(label~., data = df) |>  
   step_impute_median(all_numeric_predictors()) |> # Median Imputation
   step_zv(all_predictors()) |>   # Removes variables containing single values
   step_nzv(all_predictors()) |>  # Removes variables that are sparse and unbalanced
@@ -31,22 +47,22 @@ pTrain<- trRecipe |>
   prep() |> 
   juice()
 
-pTest<- trRecipe |> 
-  prep() |> 
-  bake(ts)
+# pTest<- trRecipe |> 
+#   prep() |> 
+#   bake(ts)
 
 trY=as.numeric(levels(pTrain$label))[pTrain$label]
-tsY=as.numeric(levels(pTest$label))[pTest$label]
+# tsY=as.numeric(levels(pTest$label))[pTest$label]
 
 train_pool<- catboost.load_pool(pTrain[,-33], label =trY)
-test_pool<- catboost.load_pool(pTest[,-33], label = tsY)
+# test_pool<- catboost.load_pool(pTest[,-33], label = tsY)
 
-fit_params<- list(iterations = 105,
-              random_seed = 50,
-              loss_function = 'Logloss',
-              use_best_model = TRUE)
+fit_params<- list(iterations = 300,
+              random_seed = 100,
+              loss_function = 'Logloss')
 
-catBoostMod<- catboost.train(learn_pool = train_pool, test = test_pool, params = fit_params)
+catboostcv<- catboost.cv(train_pool,fit_params, fold_count = 5, partition_random_seed = 20)
+catBoostMod<- catboost.train(learn_pool = train_pool, test = NULL, params = fit_params)
 
 
 
@@ -62,7 +78,7 @@ vald_pool<- vald|>
 
 predDf<- catboost.predict(catBoostMod,vald_pool, prediction_type = "Class")
 
-submission2<- as.data.frame(cbind(user_id = testdf$user_id, prediction = predDf))
+submission3<- as.data.frame(cbind(user_id = testdf$user_id, prediction = predDf))
 
 
-write.csv(submission2, "catBoost.csv")
+write.csv(submission3, "catBoost3.csv")
